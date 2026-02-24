@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+
 import 'add_product_page.dart';
+import 'edit_product_page.dart';
 
 void main() => runApp(const MyApp());
 
 //////////////////////////////////////////////////////////////
-// ✅ CONFIG (แก้ตรงนี้ถ้าเปลี่ยนเครื่อง)
+// ✅ CONFIG
 //////////////////////////////////////////////////////////////
 
 const String baseUrl =
@@ -42,6 +44,7 @@ class ProductList extends StatefulWidget {
 class _ProductListState extends State<ProductList> {
   List products = [];
   List filteredProducts = [];
+
   final TextEditingController searchController = TextEditingController();
 
   @override
@@ -56,9 +59,8 @@ class _ProductListState extends State<ProductList> {
 
   Future<void> fetchProducts() async {
     try {
-      final response = await http.get(
-        Uri.parse("${baseUrl}show_data.php"),
-      );
+      final response =
+          await http.get(Uri.parse("${baseUrl}show_data.php"));
 
       if (response.statusCode == 200) {
         setState(() {
@@ -67,7 +69,7 @@ class _ProductListState extends State<ProductList> {
         });
       }
     } catch (e) {
-      debugPrint("Error: $e");
+      debugPrint("Fetch Error: $e");
     }
   }
 
@@ -85,6 +87,70 @@ class _ProductListState extends State<ProductList> {
   }
 
   ////////////////////////////////////////////////////////////
+  // ✅ DELETE
+  ////////////////////////////////////////////////////////////
+
+  Future<void> deleteProduct(int id) async {
+    try {
+      final response = await http.get(
+        Uri.parse("${baseUrl}delete_product.php?id=$id"),
+      );
+
+      final data = json.decode(response.body);
+
+      if (data["success"] == true) {
+        fetchProducts();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("ลบสินค้าเรียบร้อย")),
+        );
+      }
+    } catch (e) {
+      debugPrint("Delete Error: $e");
+    }
+  }
+
+  ////////////////////////////////////////////////////////////
+  // ✅ CONFIRM DELETE
+  ////////////////////////////////////////////////////////////
+
+  void confirmDelete(dynamic product) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("ยืนยันการลบ"),
+        content: Text("ต้องการลบ ${product['name']} ?"),
+        actions: [
+          TextButton(
+            child: const Text("ยกเลิก"),
+            onPressed: () => Navigator.pop(context),
+          ),
+          TextButton(
+            child: const Text("ลบ"),
+            onPressed: () {
+              Navigator.pop(context);
+              deleteProduct(int.parse(product['id'].toString()));
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  ////////////////////////////////////////////////////////////
+  // ✅ OPEN EDIT PAGE
+  ////////////////////////////////////////////////////////////
+
+  void openEdit(dynamic product) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditProductPage(product: product),
+      ),
+    ).then((value) => fetchProducts());
+  }
+
+  ////////////////////////////////////////////////////////////
   // ✅ UI
   ////////////////////////////////////////////////////////////
 
@@ -95,9 +161,8 @@ class _ProductListState extends State<ProductList> {
 
       body: Column(
         children: [
-
           //////////////////////////////////////////////////////
-          // 🔍 SEARCH BOX
+          // 🔍 SEARCH
           //////////////////////////////////////////////////////
 
           Padding(
@@ -105,7 +170,7 @@ class _ProductListState extends State<ProductList> {
             child: TextField(
               controller: searchController,
               decoration: const InputDecoration(
-                labelText: 'Search by product name',
+                labelText: 'Search product',
                 prefixIcon: Icon(Icons.search),
               ),
               onChanged: filterProducts,
@@ -113,34 +178,31 @@ class _ProductListState extends State<ProductList> {
           ),
 
           //////////////////////////////////////////////////////
-          // 📦 PRODUCT LIST
+          // 📦 LIST
           //////////////////////////////////////////////////////
 
           Expanded(
             child: filteredProducts.isEmpty
                 ? const Center(child: CircularProgressIndicator())
                 : ListView.builder(
+                   padding: const EdgeInsets.only(bottom: 80), // ✅ สำคัญมาก
                     itemCount: filteredProducts.length,
                     itemBuilder: (context, index) {
                       final product = filteredProducts[index];
 
-                      //////////////////////////////////////////////////////
-                      // ✅ IMAGE URL (สำคัญมาก)
-                      //////////////////////////////////////////////////////
+                      String imageUrl =
+                          "${baseUrl}images/${product['image']}";
 
-                     String imageUrl =
-                         "${baseUrl}images/${product['image']}";
-    
                       return Card(
                         child: ListTile(
 
                           //////////////////////////////////////////////////
-                          // 🖼 IMAGE FROM SERVER
+                          // 🖼 IMAGE
                           //////////////////////////////////////////////////
 
                           leading: SizedBox(
-                            width: 80,
-                            height: 80,
+                            width: 70,
+                            height: 70,
                             child: Image.network(
                               imageUrl,
                               fit: BoxFit.cover,
@@ -156,23 +218,38 @@ class _ProductListState extends State<ProductList> {
                           title: Text(product['name'] ?? 'No Name'),
 
                           //////////////////////////////////////////////////
-                          // 📝 DESCRIPTION
+                          // 📝 DESC
                           //////////////////////////////////////////////////
 
-                          subtitle: Text(
-                            product['description'] ?? 'No Description',
-                          ),
+                          subtitle:
+                              Text(product['description'] ?? ''),
 
                           //////////////////////////////////////////////////
                           // 💰 PRICE
                           //////////////////////////////////////////////////
 
-                          trailing: Text(
-                            '฿${product['price'] ?? '0.00'}',
+                          trailing: PopupMenuButton<String>(
+                            onSelected: (value) {
+                              if (value == 'edit') {
+                                openEdit(product);
+                              } else if (value == 'delete') {
+                                confirmDelete(product);
+                              }
+                            },
+                            itemBuilder: (_) => const [
+                              PopupMenuItem(
+                                value: 'edit',
+                                child: Text('แก้ไข'),
+                              ),
+                              PopupMenuItem(
+                                value: 'delete',
+                                child: Text('ลบ'),
+                              ),
+                            ],
                           ),
 
                           //////////////////////////////////////////////////
-                          // 👉 DETAIL PAGE
+                          // 👉 DETAIL
                           //////////////////////////////////////////////////
 
                           onTap: () {
@@ -193,21 +270,18 @@ class _ProductListState extends State<ProductList> {
       ),
 
       ////////////////////////////////////////////////////////
-      // ✅ ADD BUTTON
+      // ➕ ADD BUTTON
       ////////////////////////////////////////////////////////
 
       floatingActionButton: FloatingActionButton(
         child: const Icon(Icons.add),
-
         onPressed: () {
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) => const AddProductPage(),
             ),
-          ).then((value) {
-            fetchProducts(); // ✅ รีโหลดหลังเพิ่มสินค้า
-          });
+          ).then((value) => fetchProducts());
         },
       ),
     );
@@ -225,11 +299,6 @@ class ProductDetail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
-    ////////////////////////////////////////////////////////////
-    // ✅ IMAGE URL
-    ////////////////////////////////////////////////////////////
-
     String imageUrl =
         "${baseUrl}images/${product['image']}";
 
@@ -237,10 +306,8 @@ class ProductDetail extends StatelessWidget {
       appBar: AppBar(
         title: Text(product['name'] ?? 'Detail'),
       ),
-
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -276,10 +343,10 @@ class ProductDetail extends StatelessWidget {
             const SizedBox(height: 10),
 
             //////////////////////////////////////////////////////
-            // 📝 DESCRIPTION
+            // 📝 DESC
             //////////////////////////////////////////////////////
 
-            Text(product['description'] ?? ''),
+            Text(product['description'] ?? '${product['price']}'), //Text
 
             const SizedBox(height: 10),
 
